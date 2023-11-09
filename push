@@ -1,4 +1,3 @@
 #!/bin/sh
 
-git fetch -v
-git push
+git push -u origin master
