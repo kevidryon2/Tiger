@@ -1,0 +1,4 @@
+path /ping*
+	supports-verb GET
+	return 65535 pong
+end
