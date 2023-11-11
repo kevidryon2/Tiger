@@ -1,12 +1,12 @@
 # Tiger
-A really small and fast (like a tiger) nomad web server written in C, that can be installed in any directory and transferred anywhere on the file system.
+Tiger is a really fast and powerful web server written purely in C.
 
 ## Getting Started
 First download the source code and compile it.
 
 ```bash
-git clone https://github.com/kevidryon2/tiger.git
-cd tiger
+git clone https://codeberg.com/kevidryon2/Tiger.git
+cd Tiger
 mkdir build
 make
 ```
@@ -16,39 +16,25 @@ Since Tiger only consists of less than 1K lines of code, it is really fast to co
 If you want to compile multiple architectures at once, choose between the following arguments:
 `x86-arch`, `arm-arch`, `aarch64`, `riscv-arch`.
 
-There are a few flags you can define to alter the compilation of Tiger that you can put in CFLAGS:
-
-- `-DDISABLE_CACHE`: Disable caching; this is particularly useful for web developers who want to test their website using Tiger without having to constantly clear the cache.
-- `-DNO-REDIRECT-ROOT`: Disable redirecting `/` to `/index.html`.
-- `-DREDIRECT-ROOT-PHP`: Redirect `/` to `/index.php`.
-- `-DERRORS-PHP`: Set the default error pages to `/(error).php` (For example, `/404.php` or `/500.php`)
-
--
-
 Then, create Tiger's directory structure and copy Tiger to it; in this example, we'll be using the `/srv` directory, but you can use any directory you want.
 
 ```bash
-mkdir --parents /srv/public /srv/cache /srv/scripts /srv/bin
-cp build/tiger /src/bin
+mkdir -p /srv/{public,cache,scripts,bin}
+cp build/tiger_*_dynamic /src/bin
 ```
-
--
 
 Lastly, start Tiger.
 
-```
+```bash
 cd /srv/bin
 export TIGER_PATH=..
 ./tiger
-Tiger Beveren 1 (PID = <some random number>)
-Using port 8080
-
-Creating socket... OK
-Binding... OK
-Listening... OK
-
-Using directory /srv/
-
-Loading scripts...
-Loaded Tiger. Accepting requests.
 ```
+
+### Command-line arguments
+
+You can specify a number of command-line arguments to disable certain features; like `tar`, command-line options are specified in a single argument:
+
+- `-n`: Disable using the `cache` directory.
+- `-a`: Do not redirect to `index.html`, or `index.php` when present.
+- `-e`: Disable error pages.
