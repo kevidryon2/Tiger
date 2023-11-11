@@ -29,7 +29,7 @@ def hashd(d):
         i += 1024
     return h.hexdigest()
 
-testhash = "d90e12db3d2ade1386a22cb71b287b8136f66a13"
+testhash = "1adc95bebe9eea8c112d40cd04ab7a8d75c4f961"
 
 numtests = 100
 

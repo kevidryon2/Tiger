@@ -36,6 +36,10 @@
 LoadedScript *scripts;
 int nloadedscripts = 1;
 
+bool disable_cache = false;
+bool disable_redirect = false;
+bool disable_error = false;
+
 const char *verbs[] = {"GET","POST","PUT","PATCH","DELETE","HEAD","OPTIONS"};
 
 const char *httpcodes[] = {
@@ -80,7 +84,7 @@ int TigerSearchScript(char *path, int pathlen) {
 	return -1;
 }
 
-RequestData *TigerParseRequest(const char *const reqbuff) {
+RequestData *TigerParseRequest(const char *const reqbuff, char *rootpath) {
 	RequestData *reqdata = malloc(sizeof(RequestData));
 	char *line;
 	char *tmp;
@@ -109,15 +113,29 @@ RequestData *TigerParseRequest(const char *const reqbuff) {
 	
 	free(line);
 	
-#ifndef NO_REDIRECT_ROOT
-	if (!strcmp(reqdata->path, "/")) {
-		strcpy(reqdata->path, "/index.html");
+	if (!disable_redirect) {
+		if (!strcmp(reqdata->path, "/")) {
+			strcpy(reqdata->path, "/index.html");
+			
+			//check if index.html exists
+			char filename[BUFSIZ];
+			sprintf(filename, "%s/public/index.html", rootpath);
+			if (exists(filename)) {
+				printf("index.html ");
+				sprintf(reqdata->path, "/index.html");
+			} else {
+				//check if index.php exists
+				sprintf(filename, "%s/public/index.php", rootpath);
+				if (exists(filename)) {
+					printf("index.php ");
+					sprintf(reqdata->path, "/index.php");
+				} else {
+					printf("404 ");
+					sprintf(reqdata->path, "/");
+				}
+			}
+		}
 	}
-#elif REDIRECT_ROOT_PHP
-	if (!strcmp(reqdata->path, "/")) {
-		strcpy(reqdata->path, "/index.php");
-	}
-#endif
 	/* Verify client is using HTTP 1.0 or HTTP 1.1 Protocol and using verb GET, POST, PUT, PATCH, DELETE, OPTIONS, or HEAD*/
 	if (!(startswith(reqdata->protocol, "HTTP/1.0") ||
 		  startswith(reqdata->protocol, "HTTP/1.1"))) {
@@ -179,14 +197,15 @@ loadFile_returnData TigerLoadFile(char *pubpath, char *cachepath) {
 		pubfile = fopen(pubpath, "r");
 		cachefile = fopen(cachepath, "w");
 		if (!cachefile) {
-			printf("E%d %s ", errno, cachepath);
+			perror(cachepath);
 			return (loadFile_returnData){0};
 		}
 
 		data.datalen = filesize(pubfile);
 		data.data = malloc(data.datalen);
+		
 		if (!data.data) {
-			perror("malloc");
+			perror("malloc()");
 			exit(1);
 		}
 
@@ -195,20 +214,19 @@ loadFile_returnData TigerLoadFile(char *pubpath, char *cachepath) {
 
 		fclose(pubfile);
 		fclose(cachefile);
-		putchar('N');
+		printf("(Not Cached) ");
 	} else {
 		cachefile = fopen(cachepath, "r");
 
 		data.datalen = filesize(cachefile);
 		data.data = malloc(data.datalen);
 		if (!data.data) {
-			perror("malloc");
+			perror("malloc()");
 			exit(1);
 		}
 
 		fread(data.data, 1, data.datalen, cachefile);
 		fclose(cachefile);
-		putchar('C');
 	}
 	return data;
 }
@@ -240,7 +258,6 @@ int TigerCallPHP(char *source_path, char *output_path, RequestData data, loadFil
 	//4+1+3+1 = 9
 	//9+strlen(source_path)+strlen(php_argv)+strlen(output_path)
 
-	putchar('P');
 	php_argv_s = ntoken(data.path, "?", 1);
 
 	if (!php_argv_s) {
@@ -269,8 +286,6 @@ execphp:
 	if (system(command)) {
 		return false;
 	}
-
-	printf("S");
 
 	FILE *fp = fopen(output_path, "r");
 

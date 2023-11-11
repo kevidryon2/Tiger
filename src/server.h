@@ -20,7 +20,7 @@
 #include "bns.h"
 
 /* Tiger Version String */
-#define TIGER_VERS "X.1.01"
+#define TIGER_VERS "X.1.03"
 
 #define max(a,b) ((a)>(b)?(a):(b))
 #define min(a,b) ((b)>(a)?(a):(b))
@@ -29,7 +29,7 @@ typedef struct {
 	char protocol[8];
 	char rverb[8];
 	char path[4096];
-  char *truepath;
+	char *truepath;
 
 	struct {
 		char key[32];

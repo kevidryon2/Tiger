@@ -38,14 +38,16 @@ extern char *verbs[];
 extern LoadedScript *scripts;
 extern int nloadedscripts;
 
+extern bool disable_cache;
+extern bool disable_redirect;
+extern bool disable_error;
+
 void sigpipe() {
-	SetColor16(COLOR_RED);
-	printf("EPIPE");
-	ResetColor16();
+	printf("(Probably Bogus) ");
 }
 
 void segfault() {
-	printf("\nWhoops! Tiger crashed.\n\
+	printf("\nTiger crashed!\n\
 Please sent all this information in an issue to the Tiger repository \
 (https://codeberg.com/kevidryon2/tiger):\n");
 	CRITICAL("Recieved signal 11 (SIGSEGV)!");
@@ -80,7 +82,7 @@ char *ntoken(char *const s, char *d, int t);
 int TigerInit(unsigned short port);
 LoadedScript *TigerLoadScript(char *data, int len);
 loadFile_returnData TigerLoadFile(char *pubpath, char *cachepath, int csock);
-RequestData *TigerParseRequest(const char *reqbuff);
+RequestData *TigerParseRequest(const char *const reqbuff, char *rootpath);
 void TigerExecScript(LoadedScript script, RequestData reqdata, char *resbuff);
 int TigerSearchScript(char *path, int pathlen);
 int TigerCallPHP(char *source_path, char *output_path, RequestData data, loadFile_returnData *output);
@@ -141,7 +143,20 @@ int main(int argc, char **argv, char **envp) {
 	if (argc<2) {
 		port = 8080;
 	} else {
-		port = atoi(argv[1]);
+		for (int i=1; i<argc; i++) {
+			if (argv[i][0] == '-') {
+				//options
+				for (int j=1; j<strlen(argv[i]); j++) {
+					switch (argv[i][j]) {
+						case 'n': disable_cache = true; break;
+						case 'a': disable_redirect = true; break;
+						case 'e': disable_error = true; break;
+					}
+				}
+			} else {
+				port = atoi(argv[i]);
+			}
+		}
 	}
 
 	printf("Port: %d\n\n", port);
@@ -183,13 +198,12 @@ int main(int argc, char **argv, char **envp) {
 		if (ent->d_name[0] != '.') {
 			if (endswith(ent->d_name, ".bns")) {
 				
-				/*Open file*/
+				/* Open file */
 				buffer = combine(scriptpath, ent->d_name);
-				printf("Loading file %s... ", ent->d_name);
 				fp = fopen(buffer, "r");
 				
 				if (!fp) {
-					printf("Unable to open file (Error %d)\n", errno);
+					perror(buffer);
 					return 1;
 				}
 				
@@ -209,13 +223,11 @@ int main(int argc, char **argv, char **envp) {
 				/* Load file */
 				tmp = TigerLoadScript(buffer, len);
 				if (!tmp) {
-					printf("Unable to load file (Error %d)\n", errno);
+					perror(buffer);
 					return 1;
 				}
 				
 				scripts[sn] = *(LoadedScript*)tmp;
-				
-				printf("OK\n", sn);
 				
 				sn++;
 				fclose(fp);
@@ -223,8 +235,6 @@ int main(int argc, char **argv, char **envp) {
 		}
 	};
 	closedir(dp);
-	
-	printf("Loaded Tiger. Accepting requests.\n\n");
 	
 	int csock;
 	int statcode;
@@ -257,12 +267,11 @@ int main(int argc, char **argv, char **envp) {
 	while (true) {
 		/* Accept */
 		csock = accept(serversock, &caddr, &caddrl);
-		printf("Recieved Request (Address %d.%d.%d.%d, Port %d) ",
+		printf("%d.%d.%d.%d ",
 			   caddr.sin_addr.s_addr%256,
 			   (caddr.sin_addr.s_addr>>8)%256,
 			   (caddr.sin_addr.s_addr>>16)%256,
-			   (caddr.sin_addr.s_addr>>24)%256,
-			   be16toh(caddr.sin_port)
+			   (caddr.sin_addr.s_addr>>24)%256
 		);
 		
 		/* Clear buffers */
@@ -271,34 +280,26 @@ int main(int argc, char **argv, char **envp) {
 		memset(&reqdata, 0, sizeof(reqdata));
 		
 		/* Read request */
-		putchar('I');
 		read(csock, reqbuff, BUFSIZ);
 		
 		/* Parse request */
-		putchar('P');
 		
-		if (!(reqdata = TigerParseRequest(reqbuff))) {
+		if (!(reqdata = TigerParseRequest(reqbuff, rootpath))) {
 			switch (errno) {
 				//using HTTP/0.9
 				case 1:
 				case 2:
 					SetColor16(COLOR_RED);
-					printf("H");
+					printf("HTTP/0.9 ");
 					ResetColor16();
-					printf(" (Data: ");
-					logdata(reqbuff);
-					printf(")");
-					sprintf(resbuff, "505 HTTP Version Not Supported\nServer: Tiger/"TIGER_VERS"\n\nHTTP Version not supported.");
-					write(csock, resbuff, strlen(resbuff));
 					goto endreq;
 				
 				//Invalid verb
 				case 3:
 					SetColor16(COLOR_RED);
-					printf("V (Data: ");
-					logdata(reqbuff);
-					printf(")");
+					printf("Invalid Verb ");
 					ResetColor16();
+					
 					TigerErrorHandler(501, resbuff, reqdata);
 					write(csock, resbuff, strlen(resbuff));
 					goto endreq;
@@ -306,8 +307,6 @@ int main(int argc, char **argv, char **envp) {
 		}
 		
 		reqdata->truepath = ntoken(reqdata->path, "?", 0);
-		
-		putchar('H');
 
 		/* Search for a script to handle the request */
 		script = TigerSearchScript(reqdata->truepath, strlen(reqdata->truepath));
@@ -317,18 +316,22 @@ int main(int argc, char **argv, char **envp) {
 		
 		goto noscript;
 script:
+		printf("(Script) ");
 		if (reqdata->verb == VERB_OPTIONS) {
-			printf("Ts");
+			SetColor16(COLOR_BLUE);
+			printf("OPTIONS ");
+			ResetColor16();
 			/* TODO: Return verbs supported by script */
 		}
-		printf("S%d", script);
 		TigerExecScript(scripts[script], *reqdata, resbuff);
 		goto endreq;
 		
 noscript:
 		/* If verb is OPTIONS return allowed options (GET, OPTIONS, HEAD) */
 		if (reqdata->verb == VERB_OPTIONS) {
-			printf("T");
+			SetColor16(COLOR_BLUE);
+			printf("OPTIONS");
+			ResetColor16();
 			snprintf(resbuff, BUFSIZ, "HTTP/1.0 200 OK\r\nServer: Tiger/"TIGER_VERS"\r\nAllow: OPTIONS, GET, HEAD\r\n");
 			write(csock, resbuff, strlen(resbuff));
 			goto endreq;
@@ -336,18 +339,21 @@ noscript:
 		}
 		
 		/* Fetch file */
-		putchar('F');
 		memset(public_path, 0, PATH_MAX);
 		snprintf(public_path, sizeof public_path, "%s/public/%s", rootpath, reqdata->truepath);
 		
+		
 		/* If file doesn't exist in public directory return 404 Not Found */
 		if (!(publicfp = fopen(public_path, "r"))) {
-			SetColor16(COLOR_RED);
-			printf("%d %s ", errno, reqdata->path);
-			ResetColor16();
 			if (errno == 2) {
+				SetColor16(COLOR_RED);
+				printf("%s ", reqdata->truepath);
+				ResetColor16();
 				snprintf(resbuff, BUFSIZ, "HTTP/1.0 404 Not Found\nServer: Tiger/"TIGER_VERS"\n\nError: File %s not found.\n", reqdata->truepath);
 			} else {
+				SetColor16(COLOR_RED);
+				perror(reqdata->truepath);
+				ResetColor16();
 				snprintf(resbuff, BUFSIZ, "HTTP/1.0 500 Internal Server Error\nServer: Tiger/"TIGER_VERS"\n\nError: Recieved errno %d while trying to read file %s.\n", errno, reqdata->truepath);
 			}
 			write(csock, resbuff, strlen(resbuff));
@@ -357,12 +363,11 @@ noscript:
 		fclose(publicfp);
 		
 		/* File exists */
-		printf(" %s ", reqdata->truepath);
+		printf("%s ", reqdata->truepath);
 		memset(cached_path, 0, PATH_MAX);
 		snprintf(cached_path, sizeof cached_path, "%s/cache/%s", rootpath, tmp = escapestr(reqdata->truepath));
 		free(tmp);
 		snprintf(phpoutput_path, sizeof cached_path, "%s/cache/%s.html", rootpath, tmp = escapestr(reqdata->truepath));
-
 
 		read_data = TigerLoadFile(public_path, cached_path, csock);
 		
@@ -382,7 +387,6 @@ noscript:
 
 response:
 		/* Send response */
-		putchar('O');
 		
 		sprintf(resbuff,"HTTP/1.0 200 OK\r\nServer: Tiger/"TIGER_VERS"\r\n\r\n");
 		write(csock, resbuff, strlen(resbuff));
