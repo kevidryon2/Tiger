@@ -20,7 +20,7 @@
 #include "bns.h"
 
 /* Tiger Version String */
-#define TIGER_VERS "X.1.03"
+#define TIGER_VERS "X.1.04"
 
 #define max(a,b) ((a)>(b)?(a):(b))
 #define min(a,b) ((b)>(a)?(a):(b))

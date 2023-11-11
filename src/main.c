@@ -349,12 +349,12 @@ noscript:
 				SetColor16(COLOR_RED);
 				printf("%s ", reqdata->truepath);
 				ResetColor16();
-				snprintf(resbuff, BUFSIZ, "HTTP/1.0 404 Not Found\nServer: Tiger/"TIGER_VERS"\n\nError: File %s not found.\n", reqdata->truepath);
+				TigerErrorHandler(404, resbuff, *reqdata, rootpath);
 			} else {
 				SetColor16(COLOR_RED);
-				perror(reqdata->truepath);
 				ResetColor16();
-				snprintf(resbuff, BUFSIZ, "HTTP/1.0 500 Internal Server Error\nServer: Tiger/"TIGER_VERS"\n\nError: Recieved errno %d while trying to read file %s.\n", errno, reqdata->truepath);
+				printf("ERROR %d ", errno);
+				TigerErrorHandler(500, resbuff, *reqdata, rootpath);
 			}
 			write(csock, resbuff, strlen(resbuff));
 			goto endreq;
@@ -380,7 +380,7 @@ noscript:
 #endif
 				goto response;
 			} else {
-				snprintf(resbuff, BUFSIZ, "HTTP/1.0 500 Internal Server Error\nServer: Tiger/"TIGER_VERS"\n\nCan't compile PHP file");
+				TigerErrorHandler(500, resbuff, *reqdata, rootpath);
 				goto endreq;
 			}
 		}

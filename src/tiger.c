@@ -197,7 +197,6 @@ loadFile_returnData TigerLoadFile(char *pubpath, char *cachepath) {
 		pubfile = fopen(pubpath, "r");
 		cachefile = fopen(cachepath, "w");
 		if (!cachefile) {
-			perror(cachepath);
 			return (loadFile_returnData){0};
 		}
 
@@ -231,21 +230,33 @@ loadFile_returnData TigerLoadFile(char *pubpath, char *cachepath) {
 	return data;
 }
 
+char *defaulthandlertxt[] = {
+	[400] = "Sorry, but your request could not be understood.",
+	[401] = "Sorry, but you are not authorized to view this resource.",
+	[403] = "Sorry, but you are forbidden from viewing this resource.",
+	[404] = "Sorry, but the requested resource could not be found.",
+	[410] = "Sorry, but the requested resource is not and will never be available again.",
+	[418] = "Sorry, but this server only brews tea. The server is a teapot.",
+	[451] = "Sorry, but the requested resource is not available due to legal reasons.",
+	[500] = "Sorry, but the server had a stroke trying to figure out what to do.",
+	[503] = "Sorry, but the server is overloaded and cannot handle the request.",
+	[505] = "Sorry, but your HTTP Version was not supported.",
+};
+
 void TigerErrorHandler(int status, char *response, RequestData reqdata, char *rootpath) {;
 	sprintf(response, "HTTP/1.0 %d %s\nServer: Tiger/"TIGER_VERS"\r\n\r\n", status, httpcodes[status]);
-	char *filename = malloc(9); //<status>.html
-	sprintf(filename, "%03d.html", status);
+	char filename[BUFSIZ]; //<status>.html
+	sprintf(filename, "/%03d.html", status);
 
-	void *tmp1, *tmp2;
-
-	loadFile_returnData data = TigerLoadFile(tmp1 = combine(rootpath, "/public/404.html"), tmp2 = combine(rootpath, "/public/404.html"));
+	char public_path[BUFSIZ];
+	char cache_path[BUFSIZ];
+	
+	loadFile_returnData data = TigerLoadFile(public_path, cache_path);
+	
 	if (errno) {
-		printf("E%d %s ", errno, reqdata.path);
-		return (loadFile_returnData){0};
+		//can't access error handler
+		sprintf(response, "%s<html><body>%s</body></html>", response, defaulthandlertxt[status]);
 	}
-
-	free(tmp1);
-	free(tmp2);
 }
 
 int TigerCallPHP(char *source_path, char *output_path, RequestData data, loadFile_returnData *output) {
