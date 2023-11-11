@@ -20,7 +20,7 @@ Then, create Tiger's directory structure and copy Tiger to it; in this example, 
 
 ```bash
 mkdir -p /srv/{public,cache,scripts,bin}
-cp build/tiger_*_dynamic /src/bin
+cp build/tiger-*_dynamic /src/bin
 ```
 
 Lastly, start Tiger.
