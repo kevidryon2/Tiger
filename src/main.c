@@ -306,6 +306,8 @@ int main(int argc, char **argv, char **envp) {
 			}
 		}
 		
+		//printf("%s\n", reqdata->path);
+		
 		reqdata->truepath = ntoken(reqdata->path, "?", 0);
 
 		/* Search for a script to handle the request */
@@ -342,7 +344,6 @@ noscript:
 		memset(public_path, 0, PATH_MAX);
 		snprintf(public_path, sizeof public_path, "%s/public/%s", rootpath, reqdata->truepath);
 		
-		
 		/* If file doesn't exist in public directory return 404 Not Found */
 		if (!(publicfp = fopen(public_path, "r"))) {
 			if (errno == 2) {
@@ -363,21 +364,22 @@ noscript:
 		fclose(publicfp);
 		
 		/* File exists */
-		printf("%s ", reqdata->truepath);
+		//printf("%s ", reqdata->truepath);
 		memset(cached_path, 0, PATH_MAX);
 		snprintf(cached_path, sizeof cached_path, "%s/cache/%s", rootpath, tmp = escapestr(reqdata->truepath));
 		free(tmp);
 		snprintf(phpoutput_path, sizeof cached_path, "%s/cache/%s.html", rootpath, tmp = escapestr(reqdata->truepath));
 
+		//printf("%s %s\n", cached_path, public_path);
+
 		read_data = TigerLoadFile(public_path, cached_path, csock);
+		
+		//printf("'%s' %d %d\n", read_data.data, read_data.datalen, read_data.type);
 		
 		if (endswith(reqdata->truepath, ".php")) {
 			free(read_data.data);
-#ifdef DISABLE_CACHE
-			if (TigerCallPHP(public_path, phpoutput_path, *reqdata, &read_data)) {
-#else
-			if (TigerCallPHP(cached_path, phpoutput_path, *reqdata, &read_data)) {
-#endif
+			int ret = TigerCallPHP(disable_cache?cached_path:public_path, phpoutput_path, *reqdata, &read_data);
+			if (ret) {
 				goto response;
 			} else {
 				TigerErrorHandler(500, resbuff, *reqdata, rootpath);

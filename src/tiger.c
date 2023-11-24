@@ -36,9 +36,9 @@
 LoadedScript *scripts;
 int nloadedscripts = 1;
 
-bool disable_cache = false;
-bool disable_redirect = false;
-bool disable_error = false;
+extern bool disable_cache = false;
+extern bool disable_redirect = false;
+extern bool disable_error = false;
 
 const char *verbs[] = {"GET","POST","PUT","PATCH","DELETE","HEAD","OPTIONS"};
 
@@ -183,27 +183,35 @@ int TigerInit(unsigned short port) {
 
 loadFile_returnData TigerLoadFile(char *pubpath, char *cachepath) {
 	if (!pubpath) {errno=EINVAL; return (loadFile_returnData){0};};
-	loadFile_returnData data;
+	loadFile_returnData data = {0};
 
 	FILE *pubfile;
 	FILE *cachefile;
 
-#ifndef DISABLE_CACHE
-	if (!exists(cachepath)) {
-#else
-	if (true) {
-#endif
+	if (!exists(cachepath) | !disable_cache) {
 		//If cached file doesn't exist, cache file
 		pubfile = fopen(pubpath, "r");
 		cachefile = fopen(cachepath, "w");
+		if (!pubfile) {
+			fprintf(stderr, "Unable to load public file. '%s'\n", pubpath);
+			return (loadFile_returnData){0};
+		}
 		if (!cachefile) {
+			fprintf(stderr, "Unable to create cached file.\n");
 			return (loadFile_returnData){0};
 		}
 
 		data.datalen = filesize(pubfile);
-		data.data = malloc(data.datalen);
+		
+		if (data.datalen == -1) {
+			perror("filesize()");
+			return (loadFile_returnData){0};
+		}
+		
+		data.data = calloc(1, data.datalen);
 		
 		if (!data.data) {
+			fprintf(stderr, "Unable to allocate %d bytes.\n", data.datalen);
 			perror("malloc()");
 			exit(1);
 		}
@@ -218,7 +226,7 @@ loadFile_returnData TigerLoadFile(char *pubpath, char *cachepath) {
 		cachefile = fopen(cachepath, "r");
 
 		data.datalen = filesize(cachefile);
-		data.data = malloc(data.datalen);
+		data.data = calloc(1, data.datalen);
 		if (!data.data) {
 			perror("malloc()");
 			exit(1);
@@ -226,6 +234,7 @@ loadFile_returnData TigerLoadFile(char *pubpath, char *cachepath) {
 
 		fread(data.data, 1, data.datalen, cachefile);
 		fclose(cachefile);
+		printf("(Cached) ");
 	}
 	return data;
 }
@@ -233,7 +242,7 @@ loadFile_returnData TigerLoadFile(char *pubpath, char *cachepath) {
 char *defaulthandlertxt[] = {
 	[400] = "Sorry, but your request could not be understood.",
 	[401] = "Sorry, but you are not authorized to view this resource.",
-	[403] = "Sorry, but you are forbidden from viewing this resource.",
+	[403] = "Sorry, but you are forbidden from accessing this resource.",
 	[404] = "Sorry, but the requested resource could not be found.",
 	[410] = "Sorry, but the requested resource is not and will never be available again.",
 	[418] = "Sorry, but this server only brews tea. The server is a teapot.",
@@ -255,7 +264,11 @@ void TigerErrorHandler(int status, char *response, RequestData reqdata, char *ro
 	
 	if (errno) {
 		//can't access error handler
-		sprintf(response, "%s<html><body>%s</body></html>", response, defaulthandlertxt[status]);
+		sprintf(response, "%s<html><body><h1>Error %03d</h1><p>%s</p></body></html>", response, status, defaulthandlertxt[status]);
+		return;
+	} else {
+		strncat(response, data.data, data.datalen);
+		return;
 	}
 }
 
