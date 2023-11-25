@@ -32,6 +32,7 @@
 #include "hirolib.h"
 #include "bns.h"
 #include "server.h"
+#include "librsl.h"
 #include "c-stacktrace.h"
 
 extern char *verbs[];
@@ -41,6 +42,8 @@ extern int nloadedscripts;
 extern bool disable_cache;
 extern bool disable_redirect;
 extern bool disable_error;
+extern uint32_t ip_whitelist;
+extern uint32_t ip_mask;
 
 void sigpipe() {
 	printf("(Probably Bogus) ");
@@ -68,16 +71,6 @@ void logdata(char *data) {
 		} else putchar(data[i]);
 	}
 }
-
-
-int needle(char *n, char **h, int lh);
-char *compile(char *script);
-void exec(char *binscript);
-int search_begin(char **restrict array, int num_elements, char *restrict string);
-int startswith(char *s, char *c);
-int endswith(char *restrict s, char *restrict end);
-char *combine(char *restrict a, char *restrict b);
-char *ntoken(char *const s, char *d, int t);
 
 int TigerInit(unsigned short port);
 LoadedScript *TigerLoadScript(char *data, int len);
@@ -120,6 +113,22 @@ void set_env_variable() {
 	exit(1);
 }
 
+void usage() {
+	printf("Usage: tiger [OPTIONS]\n");
+	printf("  -p [port]            (required) port to listen to\n");
+	printf("  -i [ip]              only allow [ip] to connect\n");
+	printf("  -m [ip]              apply [ip] as a mask to the client ips\n");
+	printf("  -a                   disable redirecting / to /index.html or /index.php\n");
+	printf("  -n                   disable cache\n");
+	printf("  -e                   disable using error pages (e.g. /404.html)\n");
+	printf("\n");
+	printf("An IP address can be specified in one of the following ways:\n");
+	printf("    127.0.0.1\n");
+	printf("    0xde.0xad.0xbe.0xef\n");
+	printf("    12345\n");
+	printf("    0xdeadbeef\n");
+}
+
 int main(int argc, char **argv, char **envp) {
 	char *buffer;
 	char scriptpath[PATH_MAX];
@@ -140,25 +149,69 @@ int main(int argc, char **argv, char **envp) {
 	/* Seed RNG */
 	srand(time(NULL));
 	
-	if (argc<2) {
-		port = 8080;
-	} else {
-		for (int i=1; i<argc; i++) {
-			if (argv[i][0] == '-') {
-				//options
-				for (int j=1; j<strlen(argv[i]); j++) {
-					switch (argv[i][j]) {
-						case 'n': disable_cache = true; break;
-						case 'a': disable_redirect = true; break;
-						case 'e': disable_error = true; break;
-					}
+	char *s;
+	int a, b, c, d;
+	
+	port = -1;
+	
+	for (int i=1; i<argc; i++) {
+		if (argv[i][0] == '-') {
+			//options
+			for (int j=1; j<strlen(argv[i]); j++) {
+				switch (argv[i][j]) {
+					case 'n': disable_cache = true; break;
+					case 'a': disable_redirect = true; break;
+					case 'e': disable_error = true; break;
+					case 'i': //ip whitelist
+						i++;
+						if (!(i < argc)) {
+							printf("Error: the '-i' option MUST be followed by an IP address.\nExample: -i 127.0.0.1\n");
+							exit(1);
+						}
+						s = argv[i];
+						
+						ip_whitelist = parse_ip(s);
+						a = (uint8_t)(ip_whitelist >> 24);
+						b = (uint8_t)(ip_whitelist >> 16);
+						c = (uint8_t)(ip_whitelist >> 8);
+						d = (uint8_t)(ip_whitelist >> 0);
+						printf("IP Whitelist: %d.%d.%d.%d (%08x)\n", a, b, c, d, ip_whitelist);
+						goto skip_arg;
+					case 'm': //ip mask
+						i++;
+						if (!(i < argc)) {
+							usage();
+							exit(1);
+						}
+						s = argv[i];
+						
+						ip_mask = parse_ip(s);
+						a = (uint8_t)(ip_mask >> 24);
+						b = (uint8_t)(ip_mask >> 16);
+						c = (uint8_t)(ip_mask >> 8);
+						d = (uint8_t)(ip_mask >> 0);
+						printf("IP Mask: %d.%d.%d.%d (%08x)\n", a, b, c, d, ip_mask);
+						goto skip_arg;
+					case 'p': //port
+						i++;
+						if (!(i < argc)) {
+							usage();
+							exit(1);
+						}
+						s = argv[i];
+						port = strtol(s, NULL, 0);
+						goto skip_arg;
 				}
-			} else {
-				port = atoi(argv[i]);
 			}
+	skip_arg:
 		}
 	}
-
+	
+	if (port == 65535) {
+		usage();
+		exit(1);
+	}
+	
 	printf("Port: %d\n\n", port);
 	
 	int serversock = TigerInit(port);
@@ -267,6 +320,11 @@ int main(int argc, char **argv, char **envp) {
 	while (true) {
 		/* Accept */
 		csock = accept(serversock, &caddr, &caddrl);
+		
+		if (ip_whitelist & caddr.sin_addr.s_addr) {
+			if (ntohl(caddr.sin_addr.s_addr) != ip_whitelist) goto block_req;
+		}
+		
 		printf("%d.%d.%d.%d ",
 			   caddr.sin_addr.s_addr%256,
 			   (caddr.sin_addr.s_addr>>8)%256,
@@ -405,6 +463,8 @@ endreq:
 		/* Finish and flush */
 		putchar('\n');
 		fflush(stdout);
+		
+block_req:
 		close(csock);
 	}
 }

@@ -32,13 +32,16 @@
 #include "hirolib.h"
 #include "bns.h"
 #include "server.h"
+#include "librsl.h"
 
 LoadedScript *scripts;
 int nloadedscripts = 1;
 
-extern bool disable_cache = false;
-extern bool disable_redirect = false;
-extern bool disable_error = false;
+bool disable_cache = false;
+bool disable_redirect = false;
+bool disable_error = false;
+uint32_t ip_whitelist = 0;
+uint32_t ip_mask = 0xffffffff;
 
 const char *verbs[] = {"GET","POST","PUT","PATCH","DELETE","HEAD","OPTIONS"};
 
@@ -57,10 +60,6 @@ const char *httpcodes[] = {
 	[505]="HTTP Version Not Supported",
 	[507]="Insufficient Storage"
 };
-
-char *ntoken(char *const s, char *d, int t);
-int startswith(char *s, char *c);
-int needle(char *n, char **h, int lh);
 
 bool exists(char *path) {
 	FILE *fp = fopen(path, "r");
@@ -188,7 +187,7 @@ loadFile_returnData TigerLoadFile(char *pubpath, char *cachepath) {
 	FILE *pubfile;
 	FILE *cachefile;
 
-	if (!exists(cachepath) | !disable_cache) {
+	if (!exists(cachepath) | disable_cache) {
 		//If cached file doesn't exist, cache file
 		pubfile = fopen(pubpath, "r");
 		cachefile = fopen(cachepath, "w");

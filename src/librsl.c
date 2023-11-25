@@ -19,6 +19,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdbool.h>
+#include <stdint.h>
 
 #define max(a,b) ((a)>(b)?(a):(b))
 #define min(a,b) ((b)>(a)?(a):(b))
@@ -79,4 +81,32 @@ char *ntoken(char *const s, char *d, int t) {
 		tk = strtok(0, d);
 	}
 	return tk;
+}
+
+//Count how many times C is in S
+int count(char *const s, char c, int l) {
+	int count = 0;
+	for (int i=0; i<l; i++) {
+		count += (s[i] == c);
+	}
+	
+	return count;
+}
+
+//parse IP address
+uint32_t parse_ip(char *const s) {
+	int a, b, c, d;
+	if (count(s, '.', strlen(s))) {
+		a = strtol(s, &s, 0);
+		b = strtol(s+1, &s, 0);
+		c = strtol(s+1, &s, 0);
+		d = strtol(s+1, &s, 0);
+		
+		return (uint8_t)(a >> 24) +
+		       (uint8_t)(b << 16) +
+		       (uint8_t)(c << 8) +
+		       (uint8_t)(d << 0);
+	} else {
+		return strtol(s, NULL, 0);
+	}
 }
