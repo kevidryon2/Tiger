@@ -95,17 +95,17 @@ int count(char *const s, char c, int l) {
 
 //parse IP address
 uint32_t parse_ip(char *const s) {
-	int a, b, c, d;
+	uint32_t a, b, c, d;
 	if (count(s, '.', strlen(s))) {
 		a = strtol(s, &s, 0);
 		b = strtol(s+1, &s, 0);
 		c = strtol(s+1, &s, 0);
 		d = strtol(s+1, &s, 0);
 		
-		return (uint8_t)(a >> 24) +
-		       (uint8_t)(b << 16) +
-		       (uint8_t)(c << 8) +
-		       (uint8_t)(d << 0);
+		return ((uint8_t)a << 24) +
+		       ((uint8_t)b << 16) +
+		       ((uint8_t)c << 8) +
+		       ((uint8_t)d << 0);
 	} else {
 		return strtol(s, NULL, 0);
 	}
