@@ -45,15 +45,10 @@ extern bool disable_error;
 extern uint32_t ip_whitelist;
 extern uint32_t ip_mask;
 
+bool create_daemon = false;
+
 void sigpipe() {
 	printf("(Probably Bogus) ");
-}
-
-void segfault() {
-	printf("\nTiger crashed!\n\
-Please sent all this information in an issue to the Tiger repository \
-(https://codeberg.com/kevidryon2/tiger):\n");
-	CRITICAL("Recieved signal 11 (SIGSEGV)!");
 }
 
 int filesize(FILE *fp) {
@@ -108,16 +103,15 @@ char *escapestr(unsigned char *s) {
 	return o;
 }
 
-void set_env_variable() {
-	printf("You should set the TIGER_PATH environment variable to the path you want to use as the server main directory.\n");
-	exit(1);
-}
-
-void usage() {
-	printf("Usage: tiger [OPTIONS]\n");
+void usage(char *name) {
+	printf("Usage: %s [OPTIONS]\n", name);
 	printf("  -p [port]            (required) port to listen to\n");
 	printf("  -i [ip]              only allow [ip] to connect\n");
 	printf("  -m [ip]              apply [ip] as a mask to the client ips\n");
+	printf("  -c [directory]       set working directory to [directory]\n");
+	printf("  -d start             start Tiger as daemon\n");
+	printf("  -d stop              stop Tiger daemon\n");
+	printf("  -d restart           restart Tiger daemon\n");
 	printf("  -a                   disable redirecting / to /index.html or /index.php\n");
 	printf("  -n                   disable cache\n");
 	printf("  -e                   disable using error pages (e.g. /404.html)\n");
@@ -129,7 +123,7 @@ void usage() {
 	printf("    0xdeadbeef\n");
 }
 
-int main(int argc, char **argv, char **envp) {
+int main(int argc, char **argv) {
 	char *buffer;
 	char scriptpath[PATH_MAX];
 	struct dirent *ent;
@@ -139,12 +133,12 @@ int main(int argc, char **argv, char **envp) {
 	unsigned short port;
 	char *tmp;
 	
-	printf("Tiger "TIGER_VERS"\n");
+	char *fullpath = calloc(1, 64);
+	fullpath = getcwd(fullpath, 64);
 	
-	init_exceptions(argv[0]);
+	printf("Tiger "TIGER_VERS"\n");
 
 	signal(SIGPIPE, sigpipe);
-	signal(SIGSEGV, segfault);
 	
 	/* Seed RNG */
 	srand(time(NULL));
@@ -165,7 +159,7 @@ int main(int argc, char **argv, char **envp) {
 					case 'i': //ip whitelist
 						i++;
 						if (!(i < argc)) {
-							printf("Error: the '-i' option MUST be followed by an IP address.\nExample: -i 127.0.0.1\n");
+							usage(argv[0]);
 							exit(1);
 						}
 						s = argv[i];
@@ -180,7 +174,7 @@ int main(int argc, char **argv, char **envp) {
 					case 'm': //ip mask
 						i++;
 						if (!(i < argc)) {
-							usage();
+							usage(argv[0]);
 							exit(1);
 						}
 						s = argv[i];
@@ -195,11 +189,42 @@ int main(int argc, char **argv, char **envp) {
 					case 'p': //port
 						i++;
 						if (!(i < argc)) {
-							usage();
+							usage(argv[0]);
 							exit(1);
 						}
 						s = argv[i];
 						port = strtol(s, NULL, 0);
+						goto skip_arg;
+					case 'c': //change dir
+						i++;
+						if (!(i < argc)) {
+							usage(argv[0]);
+							exit(1);
+						}
+						s = realpath(argv[i], NULL);
+						if (!s) {
+							perror(argv[i]);
+							return 1;
+						}
+						fullpath = s;
+						chdir(s);
+						goto skip_arg;
+					case 'd': //daemon
+						i++;
+						if (!(i < argc)) {
+							usage(argv[0]);
+							exit(1);
+						}
+						
+						//check if running as root
+						if (getuid() != 0) {//root has pid 0
+							printf("Error: root priviliges required.\n");
+							return 1;
+						}
+						
+						if (!strcmp(argv[i], "stop")  | !strcmp(argv[i], "restart")) daemon_stop();
+						if (!strcmp(argv[i], "start") | !strcmp(argv[i], "restart")) daemon_start();
+						if (!strcmp(argv[i], "stop")) return 0;
 						goto skip_arg;
 				}
 			}
@@ -208,26 +233,23 @@ int main(int argc, char **argv, char **envp) {
 	}
 	
 	if (port == 65535) {
-		usage();
+		usage(argv[0]);
 		exit(1);
 	}
 	
 	printf("Port: %d\n\n", port);
 	
+	if (create_daemon) daemon_init();
+	
 	int serversock = TigerInit(port);
+	
 	char rootpath[PATH_MAX];
 	char cwdbuffer[PATH_MAX];
-	char *fullpath;
 	loadFile_returnData read_data;
 	
 	/* Get server path */
 	getcwd(cwdbuffer, PATH_MAX);
 	strncpy(rootpath, cwdbuffer, PATH_MAX);
-	if (!getenv("TIGER_PATH")) set_env_variable();
-	if (!(fullpath = realpath(getenv("TIGER_PATH"), NULL))) {
-		perror(getenv("TIGER_PATH"));
-		return 127;
-	}
 	
 	strncpy(rootpath, fullpath, PATH_MAX);
 	strncat(rootpath, "/", PATH_MAX);
@@ -240,8 +262,9 @@ int main(int argc, char **argv, char **envp) {
 	
 	DIR *dp = opendir(scriptpath);
 	if (!dp) {
-		printf("Can't open script directory.\n", errno);
-		printf("You should create the 'scripts', 'public', 'cache' (the latter as a ramdisk) directories in the main server folder.\n");
+		printf("Can't open script directory.\n");
+		printf("You should create the 'scripts', 'public', 'cache' (the latter as a ramdisk) directories in the Tiger directory.\n");
+		return 1;
 	}
 	
 	scripts = malloc(sizeof(LoadedScript));

@@ -24,7 +24,8 @@ OBJS= \
 		 build/bnsload-$(ARCH).o \
 		 build/librsl-$(ARCH).o \
 		 build/tiger-$(ARCH).o \
-		 build/hirolib-$(ARCH).o
+		 build/hirolib-$(ARCH).o \
+		 build/daemon-$(ARCH).o
 
 NETCOBJS= \
 		build/netc-$(ARCH).o \

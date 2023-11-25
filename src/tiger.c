@@ -191,8 +191,7 @@ loadFile_returnData TigerLoadFile(char *pubpath, char *cachepath) {
 		//If cached file doesn't exist, cache file
 		pubfile = fopen(pubpath, "r");
 		cachefile = fopen(cachepath, "w");
-		if (!pubfile) {
-			fprintf(stderr, "Unable to load public file. '%s'\n", pubpath);
+		if (!pubfile) { 
 			return (loadFile_returnData){0};
 		}
 		if (!cachefile) {
