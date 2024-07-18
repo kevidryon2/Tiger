@@ -14,37 +14,32 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-dynamic: clean x86-arch-dynamic
-all: clean x86-arch
+ARCH=x86_64
 
-arm-dynamic: clean arm-arch-dynamic
-arm: clean arm-arch
-
-arm64-dynamic: clean aarch64-dynamic
-arm64: clean aarch64
-
-riscv-dynamic: clean riscv-arch-dynamic
-riscv: clean riscv-arch
-
-everything-static: x86-arch arm-arch aarch64 riscv-arch
-everything-dynamic: x86-arch-dynamic arm-arch-dynamic aarch64-dynamic riscv-arch-dynamic
-everything: everything-static everything-dynamic
+all: build/tiger-$(ARCH) 
+dynamic: build/tiger-$(ARCH)_dynamic
 
 clean:
-	rm -f build/*
-x86-arch:
-	make -f Makefile.x86
-x86-arch-dynamic:
-	make -f Makefile.x86 dynamic
-arm-arch:
-	make -f Makefile.arm
-arm-arch-dynamic:
-	make -f Makefile.arm dynamic
-aarch64:
-	make -f Makefile.aarch64
-aarch64-dynamic:
-	make -f Makefile.aarch64 dynamic
-riscv-arch:
-	make -f Makefile.riscv
-riscv-arch-dynamic:
-	make -f Makefile.riscv dynamic
+	rm -rf build/*
+
+OBJS= \
+		build/main.o \
+		 build/librsl.o \
+		 build/tiger.o \
+		 build/hirolib.o \
+		 build/daemon.o
+
+CCFLAGS=-pedantic -Wall -O0 -rdynamic
+CC=$(ARCH)-linux-gnu-gcc
+
+build/tiger-$(ARCH)_dynamic: $(OBJS)
+	$(CC) -g3 $(CFLAGS) $(OBJS) -o build/tiger-$(ARCH)_dynamic $(CCFLAGS)
+	
+build/tiger-$(ARCH): $(OBJS)
+	$(CC) -g3 $(CFLAGS) $(OBJS) -o build/tiger-$(ARCH) $(CCFLAGS) -static
+
+build/%.o: src/%.c
+	$(CC) -g3 $(CFLAGS) -c -o $@ $<
+
+install:
+	install build/tiger-$(ARCH) /usr/local/bin/tiger

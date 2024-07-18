@@ -30,14 +30,11 @@
 #include <stdbool.h>
 #include <signal.h>
 #include "hirolib.h"
-#include "bns.h"
 #include "server.h"
 #include "librsl.h"
 #include "c-stacktrace.h"
 
 extern char *verbs[];
-extern LoadedScript *scripts;
-extern int nloadedscripts;
 
 extern bool disable_cache;
 extern bool disable_redirect;
@@ -68,11 +65,8 @@ void logdata(char *data) {
 }
 
 int TigerInit(unsigned short port);
-LoadedScript *TigerLoadScript(char *data, int len);
 loadFile_returnData TigerLoadFile(char *pubpath, char *cachepath, int csock);
 RequestData *TigerParseRequest(const char *const reqbuff, char *rootpath);
-void TigerExecScript(LoadedScript script, RequestData reqdata, char *resbuff);
-int TigerSearchScript(char *path, int pathlen);
 int TigerCallPHP(char *source_path, char *output_path, RequestData data, loadFile_returnData *output);
 
 char *escapestr(unsigned char *s) {
@@ -256,62 +250,6 @@ int main(int argc, char **argv) {
 	
 	printf("Using directory %s\n", rootpath);
 	
-	printf("\nLoading scripts...\n");
-	
-	snprintf(scriptpath, PATH_MAX, "%s/scripts/", rootpath);
-	
-	DIR *dp = opendir(scriptpath);
-	if (!dp) {
-		printf("Can't open script directory.\n");
-		printf("You should create the 'scripts', 'public', 'cache' (the latter as a ramdisk) directories in the Tiger directory.\n");
-		return 1;
-	}
-	
-	scripts = malloc(sizeof(LoadedScript));
-	nloadedscripts=0;
-	
-	while ((ent = readdir(dp))) {
-		if (ent->d_name[0] != '.') {
-			if (endswith(ent->d_name, ".bns")) {
-				
-				/* Open file */
-				buffer = combine(scriptpath, ent->d_name);
-				fp = fopen(buffer, "r");
-				
-				if (!fp) {
-					perror(buffer);
-					return 1;
-				}
-				
-				/* Allocate script */
-				nloadedscripts++;
-				scripts = realloc(scripts, nloadedscripts*sizeof(LoadedScript));
-				
-				/* Read file */
-				free(buffer);
-				fseek(fp, 0, SEEK_END);
-				len = ftell(fp);
-				buffer = malloc(len);
-				
-				fseek(fp, 0, SEEK_SET);
-				fread(buffer, 1, len, fp);
-				
-				/* Load file */
-				tmp = TigerLoadScript(buffer, len);
-				if (!tmp) {
-					perror(buffer);
-					return 1;
-				}
-				
-				scripts[sn] = *(LoadedScript*)tmp;
-				
-				sn++;
-				fclose(fp);
-			}
-		}
-	};
-	closedir(dp);
-	
 	int csock;
 	int statcode;
 	int script;
@@ -391,25 +329,8 @@ int main(int argc, char **argv) {
 		
 		reqdata->truepath = ntoken(reqdata->path, "?", 0);
 
-		/* Search for a script to handle the request */
-		script = TigerSearchScript(reqdata->truepath, strlen(reqdata->truepath));
-		if (script > -1) goto script;
-		
 		/* TODO: Parse headers */
 		
-		goto noscript;
-script:
-		printf("(Script) ");
-		if (reqdata->verb == VERB_OPTIONS) {
-			SetColor16(COLOR_BLUE);
-			printf("OPTIONS ");
-			ResetColor16();
-			/* TODO: Return verbs supported by script */
-		}
-		TigerExecScript(scripts[script], *reqdata, resbuff);
-		goto endreq;
-		
-noscript:
 		/* If verb is OPTIONS return allowed options (GET, OPTIONS, HEAD) */
 		if (reqdata->verb == VERB_OPTIONS) {
 			SetColor16(COLOR_BLUE);
